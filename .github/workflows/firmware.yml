@@ -43,31 +43,32 @@ jobs:
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Install build dependencies
-        run: |
-          sudo -E ./scripts/install_build_dependencies.sh
-      - name: pre-build without ffmuc-mesh-vpn-wireguard-vxlan (workaround for x86-64)
-        if: matrix.target == 'x86-64'
-        run: |
-          sed -i '/ffmuc-mesh-vpn-wireguard-vxlan/d' site.mk
-          make BROKEN=1 GLUON_TARGETS=${{ matrix.target }} V=s
-          git checkout site.mk
+      
+      - name: make dirs
+        run: mkdir -p logs gluon-build output
+
+      - name: build docker image
+        run: docker build -t site-ffm -f Dockerfile_build .
+
       - name: build target ${{ matrix.target }}
         id: compile
         run: |
-          git checkout -b patched ${GITHUB_SHA}
-          make BROKEN=1 GLUON_TARGETS=${{ matrix.target }} V=s
+          docker run --rm -v $(pwd):/site-ffm:ro -v $(pwd)/gluon-build:/site-ffm/gluon-build:rw -v $(pwd)/output:/site-ffm/output:rw -w /site-ffm -u $UID site-ffm make V=s GLUON_TARGETS=${{ matrix.target }} |& tee logs/build_${{ matrix.target }}_$(date --iso=s).log
           echo "status=success" >> $GITHUB_OUTPUT
+
       - name: Upload firmware ${{ matrix.target }}
         uses: actions/upload-artifact@v4
         if: steps.compile.outputs.status == 'success'
         with:
           name: ${{ matrix.target }}_output
           path: ./output
+
+      - name: Upload firmware ${{ matrix.target }} logs
+        uses: actions/upload-artifact@v4
+        if: steps.compile.outputs.status == 'success'
+        with:
+          name: ${{ matrix.target }}_logs
+          path: ./logs
 
   create_release:
     runs-on: ubuntu-latest
@@ -85,6 +86,9 @@ jobs:
           for output in *_output; do
             tar zcvf "${output}.tar.gz" "${output}"
           done
+          for logs in *_logs; do
+            tar zcvf "${logs}.tar.gz" "${logs}"
+          done  
       - name: Create Release & Upload Release Assets
         uses: softprops/action-gh-release@v2
         with:
@@ -97,3 +101,4 @@ jobs:
           generate_release_notes: true
           files: |
             ./*_output.tar.gz
+            ./*_logs.tar.gz
