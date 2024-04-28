@@ -58,7 +58,7 @@ jobs:
       - name: build target ${{ matrix.target }}
         id: compile
         run: |
-          docker run --rm -v $(pwd):/site-ffm:ro -v $(pwd)/gluon-build:/site-ffm/gluon-build:rw -v $(pwd)/output:/site-ffm/output:rw -w /site-ffm -u $UID site-ffm make V=s GLUON_TARGETS=${{ matrix.target }} |& tee logs/build_${{ matrix.target }}_$(date --iso=s).log
+          docker run --rm -v $(pwd):/site-ffm:ro -v $(pwd)/gluon-build:/site-ffm/gluon-build:rw -v $(pwd)/output:/site-ffm/output:rw -w /site-ffm -u $UID site-ffm make V=s GLUON_TARGETS=${{ matrix.target }} |& tee logs/build_${{ matrix.target }}_$(date --iso=s | sed 's/:/-/g').log
           echo "status=success" >> $GITHUB_OUTPUT
 
       - name: Upload firmware ${{ matrix.target }}
