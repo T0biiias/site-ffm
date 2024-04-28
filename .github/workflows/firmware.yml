@@ -66,7 +66,7 @@ jobs:
         if: steps.compile.outputs.status == 'success'
         with:
           name: ${{ matrix.target }}_output
-          path: $(pwd)/output
+          path: ./output
 
       - name: Upload firmware ${{ matrix.target }} logs
         uses: actions/upload-artifact@v4
