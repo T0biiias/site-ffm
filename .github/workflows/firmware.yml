@@ -50,7 +50,7 @@ jobs:
           fetch-depth: 0
           
       - name: make dirs
-        run: mkdir -p logs gluon-build output
+        run: mkdir -p logs gluon-build output test
 
       - name: build docker image
         run: docker build -t site-ffm -f Dockerfile_build .
