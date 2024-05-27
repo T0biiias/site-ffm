@@ -14,7 +14,7 @@ updates:
       
   - package-ecosystem: "github-actions"
     directory: "/"
-    target-branch: "stable"
+    target-branch: "next"
     schedule:
       # Check for updates to GitHub Actions every weekday
       interval: "daily"
