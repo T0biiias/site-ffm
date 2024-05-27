@@ -8,7 +8,8 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "stable"
-    label: "stable"
+    labels:
+      - "stable"
     schedule:
       # Check for updates to GitHub Actions every weekday
       interval: "daily" 
@@ -17,7 +18,8 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "next"
-    label: "next"
+    labels: 
+      - "next"
     schedule:
       # Check for updates to GitHub Actions every weekday
       interval: "daily"
@@ -25,7 +27,8 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "legacy"
-    label: "legacy"
+    labels: 
+      - "legacy"
     schedule:
       # Check for updates to GitHub Actions every weekday
       interval: "daily"
