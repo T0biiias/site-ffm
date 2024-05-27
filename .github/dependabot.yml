@@ -10,18 +10,18 @@ updates:
     schedule:
       # Check for updates to GitHub Actions every weekday
       interval: "daily"
-      target-branch: "stable"
+    target-branch: "stable"
       
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       # Check for updates to GitHub Actions every weekday
       interval: "daily"
-      target-branch: "stable"
+    target-branch: "stable"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       # Check for updates to GitHub Actions every weekday
       interval: "daily"
-      target-branch: "legacy"
+    target-branch: "legacy"
