@@ -12,7 +12,9 @@ on:
       - '.github/ISSUE_TEMPLATE'
       - '.github/*.yml'
       - '.github/workflows/backport.yml'
+      - '.github/workflows/shellcheck.yml'
       - 'contrib/sign.sh'
+      - 'dependabot.yml'
 
 jobs:
   generate_target_matrix:
