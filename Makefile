@@ -85,3 +85,6 @@ output-clean:
 	rm -rf output/*
 
 clean: gluon-clean output-clean
+
+lint-lua: FORCE
+	@scripts/lint-lua.sh
