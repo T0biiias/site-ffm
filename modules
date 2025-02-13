@@ -8,6 +8,7 @@
 #		documented below
 GLUON_SITE_FEEDS='community'
 
-PACKAGES_COMMUNITY_REPO=https://github.com/freifunk-gluon/community-packages.git
-PACKAGES_COMMUNITY_COMMIT=a2015c4e4b6e0ec1ce7951a7d141dabb71bdfcae
-PACKAGES_COMMUNITY_BRANCH=master
+PACKAGES_COMMUNITY_REPO=https://github.com/t0biii/community-packages.git
+PACKAGES_COMMUNITY_COMMIT=f5d26f643a30a72d551b9c346cacdfd1f869d388
+PACKAGES_COMMUNITY_BRANCH=add-headers-ffmuc
+
