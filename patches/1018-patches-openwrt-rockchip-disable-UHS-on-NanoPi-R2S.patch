@@ -1,0 +1,79 @@
+From 930125da6addf9585092a78c8b64166cd1ec887e Mon Sep 17 00:00:00 2001
+From: T0biii <5702338+T0biii@users.noreply.github.com>
+Date: Sat, 21 Nov 2026 17:10:35 +0100
+Subject: [PATCH] patches: openwrt: rockchip: disable UHS on NanoPi R2S
+
+Add an OpenWrt patch that removes the UHS modes from the NanoPi R2S SD
+controller. The card is otherwise left in 1.8V signalling across a warm
+reset, which the RK3328 boot ROM/U-Boot cannot talk to, so the device
+hangs after every reboot/sysupgrade until power is cycled.
+
+Signed-off-by: T0biii <5702338+T0biii@users.noreply.github.com>
+---
+ ...2-rockchip-nanopi-r2s-disable-sd-uhs.patch | 54 +++++++++++++++++++
+ 1 file changed, 54 insertions(+)
+ create mode 100644 patches/openwrt/0032-rockchip-nanopi-r2s-disable-sd-uhs.patch
+
+diff --git a/patches/openwrt/0032-rockchip-nanopi-r2s-disable-sd-uhs.patch b/patches/openwrt/0032-rockchip-nanopi-r2s-disable-sd-uhs.patch
+new file mode 100644
+index 0000000..4266f4f
+--- /dev/null
++++ b/patches/openwrt/0032-rockchip-nanopi-r2s-disable-sd-uhs.patch
+@@ -0,0 +1,54 @@
++From 571cbef2e8252494cf1508609ba59e08af28149d Mon Sep 17 00:00:00 2001
++From: T0biii <5702338+T0biii@users.noreply.github.com>
++Date: Sat, 21 Nov 2026 17:10:35 +0100
++Subject: [PATCH] rockchip: disable UHS on NanoPi R2S to fix hang on warm
++ reboot
++
++The NanoPi R2S leaves the SD card in 1.8V signalling after a warm reset
++while the RK3328 boot ROM/U-Boot expects 3.3V, so the board hangs after
++reboot/sysupgrade until power is cycled. Drop the UHS modes from the SD
++controller so the card stays in 3.3V mode.
++
++Signed-off-by: T0biii <5702338+T0biii@users.noreply.github.com>
++---
++ .../131-nanopi-r2s-sd-signalling.patch        | 28 +++++++++++++++++++
++ 1 file changed, 28 insertions(+)
++ create mode 100644 target/linux/rockchip/patches-6.6/131-nanopi-r2s-sd-signalling.patch
++
++diff --git a/target/linux/rockchip/patches-6.6/131-nanopi-r2s-sd-signalling.patch b/target/linux/rockchip/patches-6.6/131-nanopi-r2s-sd-signalling.patch
++new file mode 100644
++index 0000000..11f28ae
++--- /dev/null
+++++ b/target/linux/rockchip/patches-6.6/131-nanopi-r2s-sd-signalling.patch
++@@ -0,0 +1,28 @@
+++From: T0biii <5702338+T0biii@users.noreply.github.com>
+++Subject: arm64: dts: rockchip: disable UHS modes for NanoPi R2S
+++
+++The NanoPi R2S (and R2S Plus, which includes its device tree) leaves the
+++SD card in 1.8V signalling after a warm reset, while the RK3328 boot ROM
+++and U-Boot expect it in 3.3V mode. The card is not power-cycled on
+++reboot, so it no longer answers and the board hangs until power is
+++removed. This hits every sysupgrade/autoupdater run and every plain
+++reboot.
+++
+++Remove all UHS modes from the SD controller so the card stays in 3.3V
+++signalling. This costs transfer speed but makes reboots, sysupgrades and
+++kernel panics recover reliably. Same approach as the NanoPi R4S patch
+++(105-nanopi-r4s-sd-signalling.patch).
+++
+++--- a/arch/arm64/boot/dts/rockchip/rk3328-nanopi-r2s.dts
++++++ b/arch/arm64/boot/dts/rockchip/rk3328-nanopi-r2s.dts
+++@@ -351,10 +351,6 @@
+++ 	disable-wp;
+++ 	pinctrl-0 = <&sdmmc0_clk>, <&sdmmc0_cmd>, <&sdmmc0_dectn>, <&sdmmc0_bus4>;
+++ 	pinctrl-names = "default";
+++-	sd-uhs-sdr12;
+++-	sd-uhs-sdr25;
+++-	sd-uhs-sdr50;
+++-	sd-uhs-sdr104;
+++ 	vmmc-supply = <&vcc_sd>;
+++ 	vqmmc-supply = <&vcc_io_sdio>;
+++ 	status = "okay";
++-- 
++2.50.1.windows.1
++
+-- 
+2.50.1.windows.1
+
