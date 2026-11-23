@@ -1,0 +1,212 @@
+From 247c6f00c52f66cd90d145a4a47f8448ed8619a2 Mon Sep 17 00:00:00 2001
+From: T0biii <5702338+T0biii@users.noreply.github.com>
+Date: Mon, 23 Nov 2026 20:26:45 +0100
+Subject: [PATCH] patches: openwrt: backport mmc sdio UHS init fixes
+
+Add an OpenWrt patch that backports the pending linux-mmc series
+"mmc: core: sdio: fix UHS init with fixed 1.8V vqmmc" (v3) to the 6.6
+kernel, so SDIO Wi-Fi modules that misreport S18A at a fixed 1.8V bus
+(RTL8822CS on the NanoPi R2S Plus) come up in SDR104 instead of failing
+the voltage switch.
+
+Link: https://patchwork.kernel.org/series/1197209/
+Signed-off-by: T0biii <5702338+T0biii@users.noreply.github.com>
+---
+ ...-UHS-init-fixes-for-fixed-1.8V-vqmmc.patch | 185 ++++++++++++++++++
+ 1 file changed, 185 insertions(+)
+ create mode 100644 patches/openwrt/0033-kernel-backport-mmc-sdio-UHS-init-fixes-for-fixed-1.8V-vqmmc.patch
+
+diff --git a/patches/openwrt/0033-kernel-backport-mmc-sdio-UHS-init-fixes-for-fixed-1.8V-vqmmc.patch b/patches/openwrt/0033-kernel-backport-mmc-sdio-UHS-init-fixes-for-fixed-1.8V-vqmmc.patch
+new file mode 100644
+index 0000000..3c86759
+--- /dev/null
++++ b/patches/openwrt/0033-kernel-backport-mmc-sdio-UHS-init-fixes-for-fixed-1.8V-vqmmc.patch
+@@ -0,0 +1,185 @@
++From 4c655e7763eeefed490336eec9e16f011cc50599 Mon Sep 17 00:00:00 2001
++From: T0biii <5702338+T0biii@users.noreply.github.com>
++Date: Mon, 23 Nov 2026 20:26:44 +0100
++Subject: [PATCH] kernel: backport mmc sdio UHS init fixes for fixed 1.8V vqmmc
++
++Add the pending linux-mmc series "mmc: core: sdio: fix UHS init with
++fixed 1.8V vqmmc" (v3, not yet merged) to the generic 6.6 kernel:
++
++  mmc: core: sdio: retry without UHS if UHS init fails
++  mmc: core: sdio: skip CMD11 if signalling is already 1.8V
++
++SDIO cards that misreport S18A = 1 while the bus is already at 1.8V
++(e.g. the RTL8822CS Wi-Fi module on the NanoPi R2S Plus) otherwise fail
++the CMD11 voltage switch and fall back to 50 MHz instead of SDR104, or
++do not initialise at all.
++
++Link: https://patchwork.kernel.org/series/1197209/
++Signed-off-by: T0biii <5702338+T0biii@users.noreply.github.com>
++---
++ ...-retry-without-UHS-if-UHS-init-fails.patch | 60 +++++++++++++
++ ...-CMD11-if-signalling-is-already-1.8V.patch | 85 +++++++++++++++++++
++ 2 files changed, 145 insertions(+)
++ create mode 100644 target/linux/generic/pending-6.6/459-1-mmc-core-sdio-retry-without-UHS-if-UHS-init-fails.patch
++ create mode 100644 target/linux/generic/pending-6.6/459-2-mmc-core-sdio-skip-CMD11-if-signalling-is-already-1.8V.patch
++
++diff --git a/target/linux/generic/pending-6.6/459-1-mmc-core-sdio-retry-without-UHS-if-UHS-init-fails.patch b/target/linux/generic/pending-6.6/459-1-mmc-core-sdio-retry-without-UHS-if-UHS-init-fails.patch
++new file mode 100644
++index 0000000..bc0a2a2
++--- /dev/null
+++++ b/target/linux/generic/pending-6.6/459-1-mmc-core-sdio-retry-without-UHS-if-UHS-init-fails.patch
++@@ -0,0 +1,60 @@
+++From 27727a85d53afa7af9fbd78ebeafab18f023e0ef Mon Sep 17 00:00:00 2001
+++From: Deomid rojer Ryabkov <rojer@rojer.me>
+++Date: Fri, 30 Oct 2026 17:22:23 +0300
+++Subject: [PATCH 1/2] mmc: core: sdio: retry without UHS if UHS init fails
+++
+++If mmc_sdio_init_uhs_card() fails, e.g. because tuning finds no
+++working sample phase, card initialisation fails and the card is not
+++usable at all, even though it would work fine in high-speed mode.
+++
+++This happens for example on the FriendlyElec NanoPi R2S Plus when the
+++SDIO pins of the RTL8822CS Wi-Fi module are left at their default 4 mA
+++drive strength:
+++
+++  dwmmc_rockchip ff5f0000.mmc: All phases bad!
+++  mmc2: tuning execution failed: -5
+++  mmc2: error -5 whilst initialising SDIO card
+++  [... repeated for every init frequency ...]
+++  mmc2: Failed to initialize a non-removable card
+++
+++There is already a fallback for a failure to read the CCCR in UHS mode:
+++reset the card and restart the init sequence without R4_18V_PRESENT.
+++Do the same when UHS init fails, so that the card comes up in
+++high-speed mode instead:
+++
+++  mmc2: UHS init failed (-5), retrying without UHS
+++  mmc2: Skipping voltage switch
+++  mmc2: new high speed SDIO card at address 0001
+++
+++The fallback is taken at most once, as the retry doesn't request UHS.
+++
+++Reviewed-by: Shawn Lin <shawn.lin@rock-chips.com>
+++Signed-off-by: Deomid rojer Ryabkov <rojer@rojer.me>
+++---
+++ drivers/mmc/core/sdio.c | 10 ++++++++--
+++ 1 file changed, 8 insertions(+), 2 deletions(-)
+++
+++diff --git a/drivers/mmc/core/sdio.c b/drivers/mmc/core/sdio.c
+++index 2c58df6..de3686b 100644
+++--- a/drivers/mmc/core/sdio.c
++++++ b/drivers/mmc/core/sdio.c
+++@@ -867,8 +867,14 @@ try_again:
+++ 	/* Only if card supports 1.8v and UHS signaling */
+++ 	if ((ocr & R4_18V_PRESENT) && card->sw_caps.sd3_bus_mode) {
+++ 		err = mmc_sdio_init_uhs_card(card);
+++-		if (err)
+++-			goto remove;
++++		if (err) {
++++			pr_warn("%s: UHS init failed (%d), retrying without UHS\n",
++++				mmc_hostname(host), err);
++++			mmc_sdio_pre_init(host, ocr_card,
++++					  oldcard ? NULL : card);
++++			retries = 0;
++++			goto try_again;
++++		}
+++ 	} else {
+++ 		/*
+++ 		 * Switch to high-speed (if supported).
+++-- 
+++2.50.1.windows.1
+++
++diff --git a/target/linux/generic/pending-6.6/459-2-mmc-core-sdio-skip-CMD11-if-signalling-is-already-1.8V.patch b/target/linux/generic/pending-6.6/459-2-mmc-core-sdio-skip-CMD11-if-signalling-is-already-1.8V.patch
++new file mode 100644
++index 0000000..e7c53a7
++--- /dev/null
+++++ b/target/linux/generic/pending-6.6/459-2-mmc-core-sdio-skip-CMD11-if-signalling-is-already-1.8V.patch
++@@ -0,0 +1,85 @@
+++From 2505fee7c7b422b43b35a4382df9678f47d2ce6c Mon Sep 17 00:00:00 2001
+++From: Deomid rojer Ryabkov <rojer@rojer.me>
+++Date: Fri, 30 Oct 2026 17:22:24 +0300
+++Subject: [PATCH 2/2] mmc: core: sdio: skip CMD11 if signalling is already 1.8V
+++
+++Per the SDIO Simplified Specification Version 3.00, section 3.1.2, a card
+++whose signalling is already at 1.8V must report S18A = 0 in the R4
+++response, and the core relies on that: it only sends CMD11
+++(SD_SWITCH_VOLTAGE) when S18A is set.
+++
+++Some cards don't follow this. The Realtek RTL8822CS (as fitted on the
+++FriendlyElec NanoPi R2S Plus, where the M.2 SDIO bus is wired to a fixed
+++1.8V vqmmc) answers CMD5 with S18A = 1 even though the bus is already at
+++1.8V. CMD11 then times out:
+++
+++  dwmmc_rockchip ff5f0000.mmc: Unexpected CMD11 timeout
+++  mmc_host mmc2: Timeout sending command (cmd 0x10202000 arg 0x0 status 0x90202000)
+++  mmc2: new high speed SDIO card at address 0001
+++
+++and the card ends up in 50 MHz high-speed mode instead of SDR104.
+++
+++The SWT6621S misreports S18A the same way; there, the failed switch
+++leaves the card unable to initialise at all (error -110) instead of
+++falling back to high speed.
+++
+++When vqmmc can't do 3.3V, mmc_set_initial_signal_voltage() has already
+++fallen back to 1.8V by the time CMD5 is sent, so the host knows there is
+++nothing to switch. Skip CMD11 in that case. ocr keeps R4_18V_PRESENT, so
+++mmc_sdio_init_uhs_card() still runs and the card is tuned to SDR104:
+++
+++  dwmmc_rockchip ff5f0000.mmc: Successfully tuned phase to 64
+++  mmc2: new ultra high speed SDR104 SDIO card at address 0001
+++
+++Hosts that start at 3.3V are not affected, nor are compliant cards that
+++report S18A = 0 at 1.8V. A non-compliant card that does need CMD11
+++before entering UHS at 1.8V would now fail UHS init; with the previous
+++patch it falls back to high-speed mode and keeps working.
+++
+++This relies on the fixed 1.8V supply being described as vqmmc-supply.
+++vqmmc is optional: without it, the host can't tell that the bus is
+++hardwired to 1.8V. Setting 3.3V then "succeeds", the core believes the
+++bus is at 3.3V and CMD11 is still sent, so the patch doesn't help. Such
+++boards need to describe the supply (e.g. a fixed 1.8V regulator as
+++vqmmc-supply) to benefit from it.
+++
+++FriendlyElec's BSP for this board works around this with a card
+++quirk, MMC_QUIRK_BROKEN_ROCR_S18A[1], matched on the "realtek,rtl8822cs"
+++compatible, which drops the switch request whenever this chip is
+++present. The misreported S18A is the card's fault, but ignoring it is
+++only correct when the bus is already at 1.8V: on a board with a
+++switchable vqmmc the same chip would then be run in UHS at 3.3V. A card
+++quirk would need knowledge of the board's supply that it doesn't have.
+++The core does know the current signal voltage, so handle it there, which
+++also takes care of any other card that turns out to behave the same way.
+++
+++[1] https://github.com/friendlyarm/kernel-rockchip/commit/aee62cf7ae16b5ede6c6d92a8ee20e796482754e
+++Cc: Jensen Huang <jensenhuang@friendlyarm.com>
+++Reviewed-by: Shawn Lin <shawn.lin@rock-chips.com>
+++Tested-by: Longjian Lin <llj@rock-chips.com>
+++Signed-off-by: Deomid rojer Ryabkov <rojer@rojer.me>
+++---
+++ drivers/mmc/core/sdio.c | 6 ++++--
+++ 1 file changed, 4 insertions(+), 2 deletions(-)
+++
+++diff --git a/drivers/mmc/core/sdio.c b/drivers/mmc/core/sdio.c
+++index de3686b..e76b5f7 100644
+++--- a/drivers/mmc/core/sdio.c
++++++ b/drivers/mmc/core/sdio.c
+++@@ -737,9 +737,11 @@ try_again:
+++ 	 * 1.8v, the card sets S18A to 0 in the R4 response. So it will
+++ 	 * fails to check rocr & R4_18V_PRESENT,  but we still need to
+++ 	 * try to init uhs card. sdio_read_cccr will take over this task
+++-	 * to make sure which speed mode should work.
++++	 * to make sure which speed mode should work. Some cards (RTL8822CS)
++++	 * set S18A regardless, so don't send CMD11 if we are already at 1.8V.
+++ 	 */
+++-	if (rocr & ocr & R4_18V_PRESENT) {
++++	if ((rocr & ocr & R4_18V_PRESENT) &&
++++	    host->ios.signal_voltage != MMC_SIGNAL_VOLTAGE_180) {
+++ 		err = mmc_set_uhs_voltage(host, ocr_card);
+++ 		if (err == -EAGAIN) {
+++ 			mmc_sdio_pre_init(host, ocr_card, card);
+++-- 
+++2.50.1.windows.1
+++
++-- 
++2.50.1.windows.1
++
+-- 
+2.50.1.windows.1
+
