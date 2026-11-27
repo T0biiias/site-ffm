@@ -1,0 +1,107 @@
+From 7a1d85bf7b8f88cf692f83561be8d21cb547f4ae Mon Sep 17 00:00:00 2001
+From: T0biii <5702338+T0biii@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 10:41:58 +0100
+Subject: [PATCH] patches: openwrt: rockchip: wait after SD card power-off on
+ shutdown
+
+Add an OpenWrt kernel patch that makes the Rockchip dw_mmc driver wait one
+second after the SD card has been powered off during shutdown. A UHS card
+is otherwise still in 1.8V signalling when the SoC resets, which the boot
+ROM/U-Boot cannot talk to, so the NanoPi R2S hangs after every reboot or
+sysupgrade until power is cycled. This keeps UHS enabled, unlike the
+alternative that disables UHS on the R2S.
+
+Signed-off-by: T0biii <5702338+T0biii@users.noreply.github.com>
+---
+ ...-wait-after-SD-power-off-on-shutdown.patch | 79 +++++++++++++++++++
+ 1 file changed, 79 insertions(+)
+ create mode 100644 patches/openwrt/0034-rockchip-wait-after-SD-power-off-on-shutdown.patch
+
+diff --git a/patches/openwrt/0034-rockchip-wait-after-SD-power-off-on-shutdown.patch b/patches/openwrt/0034-rockchip-wait-after-SD-power-off-on-shutdown.patch
+new file mode 100644
+index 0000000..ae29b2e
+--- /dev/null
++++ b/patches/openwrt/0034-rockchip-wait-after-SD-power-off-on-shutdown.patch
+@@ -0,0 +1,79 @@
++From 2ac67bcdef5c2a0b6f0c532d7ce7f2a28d96e811 Mon Sep 17 00:00:00 2001
++From: T0biii <5702338+T0biii@users.noreply.github.com>
++Date: Fri, 27 Nov 2026 10:41:51 +0100
++Subject: [PATCH] rockchip: wait after powering off the SD card on shutdown
++
++The NanoPi R2S leaves a UHS SD card in 1.8V signalling across a warm
++reset because the card does not discharge in the few milliseconds before
++the reset, and the boot ROM/U-Boot then cannot read it. Wait one second
++after the card has been powered off during shutdown instead of disabling
++UHS.
++
++Signed-off-by: T0biii <5702338+T0biii@users.noreply.github.com>
++---
++ ...mmc-rockchip-wait-after-SD-power-off.patch | 53 +++++++++++++++++++
++ 1 file changed, 53 insertions(+)
++ create mode 100644 target/linux/rockchip/patches-6.6/132-mmc-dw_mmc-rockchip-wait-after-SD-power-off.patch
++
++diff --git a/target/linux/rockchip/patches-6.6/132-mmc-dw_mmc-rockchip-wait-after-SD-power-off.patch b/target/linux/rockchip/patches-6.6/132-mmc-dw_mmc-rockchip-wait-after-SD-power-off.patch
++new file mode 100644
++index 0000000..9633e3d
++--- /dev/null
+++++ b/target/linux/rockchip/patches-6.6/132-mmc-dw_mmc-rockchip-wait-after-SD-power-off.patch
++@@ -0,0 +1,53 @@
+++From: T0biii <5702338+T0biii@users.noreply.github.com>
+++Subject: mmc: dw_mmc-rockchip: wait after powering off the SD card on shutdown
+++
+++A UHS SD card (1.8V signalling) stays in that mode until its supply is
+++really gone. mmc_bus_shutdown() switches the card supply off, but the SoC
+++reset follows within a few milliseconds, before the card has discharged.
+++On the NanoPi R2S the boot ROM and U-Boot then find a card that still
+++expects 1.8V signalling and the board hangs until the power is removed.
+++
+++Wait one second after the card has been powered off during shutdown, so
+++the card drops out before the reset. Only removable (SD) slots are
+++affected, eMMC is not.
+++
+++--- a/drivers/mmc/host/dw_mmc-rockchip.c
++++++ b/drivers/mmc/host/dw_mmc-rockchip.c
+++@@ -6,6 +6,7 @@
+++ #include <linux/module.h>
+++ #include <linux/platform_device.h>
+++ #include <linux/clk.h>
++++#include <linux/delay.h>
+++ #include <linux/mmc/host.h>
+++ #include <linux/of_address.h>
+++ #include <linux/mmc/slot-gpio.h>
+++@@ -388,9 +389,29 @@
+++ 			   NULL)
+++ };
+++ 
++++/*
++++ * An SD card that was switched to 1.8V signalling (UHS) stays in that mode
++++ * until its supply is really gone. mmc_bus_shutdown() already switches the
++++ * card supply off, but the SoC reset follows within a few milliseconds,
++++ * before the card has discharged. The boot ROM and U-Boot then find a card
++++ * that still expects 1.8V signalling and cannot read it, so the board hangs
++++ * until the power is removed. Give the card time to drop out before the
++++ * reset happens.
++++ */
++++#define DW_MCI_ROCKCHIP_SD_OFF_DELAY_MS	1000
++++
++++static void dw_mci_rockchip_shutdown(struct platform_device *pdev)
++++{
++++	struct dw_mci *host = platform_get_drvdata(pdev);
++++
++++	if (host && host->slot && mmc_card_is_removable(host->slot->mmc))
++++		msleep(DW_MCI_ROCKCHIP_SD_OFF_DELAY_MS);
++++}
++++
+++ static struct platform_driver dw_mci_rockchip_pltfm_driver = {
+++ 	.probe		= dw_mci_rockchip_probe,
+++ 	.remove_new	= dw_mci_rockchip_remove,
++++	.shutdown	= dw_mci_rockchip_shutdown,
+++ 	.driver		= {
+++ 		.name		= "dwmmc_rockchip",
+++ 		.probe_type	= PROBE_PREFER_ASYNCHRONOUS,
++-- 
++2.50.1.windows.1
++
+-- 
+2.50.1.windows.1
+
