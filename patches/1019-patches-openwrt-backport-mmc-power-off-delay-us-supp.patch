@@ -1,0 +1,130 @@
+From: T0biii <5702338+T0biii@users.noreply.github.com>
+Date: Sat, 28 Nov 2026 14:51:35 +0100
+Subject: patches: openwrt: backport mmc power-off-delay-us support
+
+Backport the upstream Linux commit 3c6f98b6e64e ("mmc: core: Add
+power-off-delay-us support", in Linux 7.4) to the OpenWrt kernel 6.12.
+The commit makes the delay after an MMC power-off configurable per host
+from the device tree. The default stays at 1 ms. The next patch sets
+it for the NanoPi R2S.
+
+Signed-off-by: T0biii <5702338+T0biii@users.noreply.github.com>
+---
+ ...-core-add-power-off-delay-us-support.patch | 108 ++++++++++++++++++
+ 1 file changed, 108 insertions(+)
+ create mode 100644 patches/openwrt/0032-kernel-backport-mmc-core-add-power-off-delay-us-support.patch
+
+diff --git a/patches/openwrt/0032-kernel-backport-mmc-core-add-power-off-delay-us-support.patch b/patches/openwrt/0032-kernel-backport-mmc-core-add-power-off-delay-us-support.patch
+new file mode 100644
+index 0000000..9783952
+--- /dev/null
++++ b/patches/openwrt/0032-kernel-backport-mmc-core-add-power-off-delay-us-support.patch
+@@ -0,0 +1,108 @@
++From 429655516808b33bd96a5b2d1e5a266b1874c159 Mon Sep 17 00:00:00 2001
++From: T0biii <5702338+T0biii@users.noreply.github.com>
++Date: Sat, 28 Nov 2026 14:51:34 +0100
++Subject: [PATCH 1/2] kernel: backport mmc: core: Add power-off-delay-us
++ support
++
++Backport the upstream Linux commit 3c6f98b6e64e ("mmc: core: Add
++power-off-delay-us support", in Linux 7.4) to kernel 6.12. It makes the
++delay after an MMC power-off configurable per host from the device tree.
++The default stays at 1 ms.
++
++Signed-off-by: T0biii <5702338+T0biii@users.noreply.github.com>
++---
++ ...-core-Add-power-off-delay-us-support.patch | 85 +++++++++++++++++++
++ 1 file changed, 85 insertions(+)
++ create mode 100644 target/linux/generic/backport-6.12/946-v7.4-mmc-core-Add-power-off-delay-us-support.patch
++
++diff --git a/target/linux/generic/backport-6.12/946-v7.4-mmc-core-Add-power-off-delay-us-support.patch b/target/linux/generic/backport-6.12/946-v7.4-mmc-core-Add-power-off-delay-us-support.patch
++new file mode 100644
++index 0000000..0235da5
++--- /dev/null
+++++ b/target/linux/generic/backport-6.12/946-v7.4-mmc-core-Add-power-off-delay-us-support.patch
++@@ -0,0 +1,85 @@
+++From: Judith Mendez <jm@ti.com>
+++Date: Thu, 6 Aug 2026 16:22:02 +0000
+++Subject: mmc: core: Add power-off-delay-us support
+++
+++Add support for power-off-delay-us which shall be used to specify
+++value of delay after deasserting power during MMC power cycles.
+++Default for delay is 1000us but custom delay can be passed in to work
+++around hardware issues such as slow RC discharge on MMC VDD rails.
+++
+++Signed-off-by: Judith Mendez <jm@ti.com>
+++Signed-off-by: Ulf Hansson <ulfh@kernel.org>
+++(cherry picked from commit 3c6f98b6e64e565ec548c63e32e58af2af2c1811)
+++---
+++ drivers/mmc/core/core.c  | 2 +-
+++ drivers/mmc/core/core.h  | 8 ++++++++
+++ drivers/mmc/core/host.c  | 4 ++++
+++ include/linux/mmc/host.h | 1 +
+++ 4 files changed, 14 insertions(+), 1 deletion(-)
+++
+++diff --git a/drivers/mmc/core/core.c b/drivers/mmc/core/core.c
+++index 327029f..b2c1635 100644
+++--- a/drivers/mmc/core/core.c
++++++ b/drivers/mmc/core/core.c
+++@@ -1382,7 +1382,7 @@ void mmc_power_off(struct mmc_host *host)
+++ 	 * XO-1.5, require a short delay after poweroff before the card
+++ 	 * can be successfully turned on again.
+++ 	 */
+++-	mmc_delay(1);
++++	mmc_delay_us(host->ios.power_off_delay_us);
+++ }
+++ 
+++ void mmc_power_cycle(struct mmc_host *host, u32 ocr)
+++diff --git a/drivers/mmc/core/core.h b/drivers/mmc/core/core.h
+++index 37091a6..b93b237 100644
+++--- a/drivers/mmc/core/core.h
++++++ b/drivers/mmc/core/core.h
+++@@ -68,6 +68,14 @@ static inline void mmc_delay(unsigned int ms)
+++ 		msleep(ms);
+++ }
+++ 
++++static inline void mmc_delay_us(unsigned int us)
++++{
++++	if (us == 0)
++++		return;
++++
++++	fsleep(us);
++++}
++++
+++ void mmc_rescan(struct work_struct *work);
+++ void mmc_start_host(struct mmc_host *host);
+++ void __mmc_stop_host(struct mmc_host *host);
+++diff --git a/drivers/mmc/core/host.c b/drivers/mmc/core/host.c
+++index fd423ac..5136997 100644
+++--- a/drivers/mmc/core/host.c
++++++ b/drivers/mmc/core/host.c
+++@@ -427,6 +427,9 @@ int mmc_of_parse(struct mmc_host *host)
+++ 	device_property_read_u32(dev, "post-power-on-delay-ms",
+++ 				 &host->ios.power_delay_ms);
+++ 
++++	device_property_read_u32(dev, "power-off-delay-us",
++++				 &host->ios.power_off_delay_us);
++++
+++ 	return mmc_pwrseq_alloc(host);
+++ }
+++ 
+++@@ -578,6 +581,7 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
+++ 
+++ 	host->fixed_drv_type = -EINVAL;
+++ 	host->ios.power_delay_ms = 10;
++++	host->ios.power_off_delay_us = 1000;
+++ 	host->ios.power_mode = MMC_POWER_UNDEFINED;
+++ 
+++ 	return host;
+++diff --git a/include/linux/mmc/host.h b/include/linux/mmc/host.h
+++index 68068ba..ef68452 100644
+++--- a/include/linux/mmc/host.h
++++++ b/include/linux/mmc/host.h
+++@@ -22,6 +22,7 @@ struct mmc_ios {
+++ 	unsigned int	clock;			/* clock rate */
+++ 	unsigned short	vdd;
+++ 	unsigned int	power_delay_ms;		/* waiting for stable power */
++++	unsigned int	power_off_delay_us;	/* waiting for power discharge */
+++ 
+++ /* vdd stores the bit number of the selected voltage range from below. */
+++ 
