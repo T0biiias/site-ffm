@@ -40,8 +40,14 @@ jobs:
       - name: Set target matrix
         id: set_target
         shell: bash
+        env:
+          HEAD_REF: ${{ github.head_ref }}
         run: |
           target_list=$(cat targets | jq -Rsc '.[:-1] | split("\n")')
+          # TEMP: build only rockchip-armv8 for the R2S UHS test PR. Drop before merging.
+          if [ "$HEAD_REF" = "parker-2026.1-r2s-disable-uhs" ]; then
+            target_list='["rockchip-armv8"]'
+          fi
           echo "target={\"target\": $(echo $target_list)}" >> $GITHUB_OUTPUT
           echo "build_target={\"target\": $(echo $target_list)}" >> $GITHUB_OUTPUT
 
